@@ -7,12 +7,17 @@ namespace noise
     {
         public static void Main(string[] args)
         {
-            string url = "http://localhost:8000/api"; //replace this with your own web API URL
-            WebApplication webapi = (WebApplication)new HostBuilder().Build();
+            string url = "http://localhost:8000"; //replace this with your own web server URL
+            WebApplication webapi = WebApplication.CreateBuilder().Build();
+
+            //look up how to do this with Host.CreateDefaultBuilder or HostBuilder
 
             webapi.UseRouting();
-            webapi.MapGet("/noise", NoiseGenerator.Generate);
-            webapi.UseEndpoints(e => { });
+            webapi.UsePathBase("/api"); //replace this with the path on your web server where you want to run the API
+            //webapi.MapGet("/noise", NoiseGenerator.Generate);
+            webapi.UseEndpoints(endpoints => {
+                endpoints.MapGet("/noise", NoiseGenerator.Generate);
+            });
 
             webapi.Run(url);
         }
@@ -20,12 +25,12 @@ namespace noise
 
     public class NoiseGenerator
     {
-        private static FastNoiseLite ftlNoise = new FastNoiseLite();
+        private static FastNoiseLite fnlNoise = new FastNoiseLite();
 
-        public static Bitmap Generate()
+        public static async Task Generate(HttpContext context)
         {
             //Output noise as a float array.
-            ftlNoise.SetNoiseType(FastNoiseLite.NoiseType.OpenSimplex2);
+            fnlNoise.SetNoiseType(FastNoiseLite.NoiseType.OpenSimplex2);
             float[] noiseData = new float[128 * 128];
             int index = 0;
 
@@ -33,7 +38,7 @@ namespace noise
             {
                 for (int x = 0; x < 128; x++)
                 {
-                    noiseData[index++] = ftlNoise.GetNoise(x, y);
+                    noiseData[index++] = fnlNoise.GetNoise(x, y);
                 }
             }
 
@@ -74,7 +79,16 @@ namespace noise
                 }
             }
 
-            return bitmap;
+            //for some reason, we can't just simply return the Bitmap object directly,
+            //we have to put it in the HTTP response body (can also be done without async)
+            using (MemoryStream stream = new MemoryStream())
+            {
+                bitmap.Save(stream, ImageFormat.Png);
+                stream.Seek(0, SeekOrigin.Begin);
+
+                context.Response.ContentType = "image/png";
+                await stream.CopyToAsync(context.Response.Body);
+            }
         }
     }
 }
